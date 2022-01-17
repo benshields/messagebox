@@ -1,0 +1,28 @@
+# default.yaml supports configuration for local development
+#
+# This is a YAML-formatted file.
+# Declare values to be passed into your configuration.
+#
+# **** CRITICAL:
+# Please keep this file lexicographically sorted.  It is critical
+# to do so for multiple reasons:
+#    - ease for developers to add key/values to proper stanzas
+#    - avoids duplicate top level keys leading to possible
+#        issues due to missing keys
+#
+
+database:
+  databaseName: "messagebox"
+  host: "0.0.0.0"
+  maxIdleConns: 2
+  maxOpenConns: 50
+  password: "insecure"
+  port: "5432"
+  user: "messagebox_user"
+
+logger:
+  preset: "development"
+
+server:
+  host: "0.0.0.0"
+  port: "8080"

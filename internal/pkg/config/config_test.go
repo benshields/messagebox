@@ -39,6 +39,7 @@ func TestNew(t *testing.T) {
 				Server: ServerConfiguration{
 					Host: "0.0.0.0",
 					Port: "8080",
+					Mode: "debug",
 				},
 				Database: DatabaseConfiguration{
 					DatabaseName: "messagebox",
@@ -62,6 +63,7 @@ func TestNew(t *testing.T) {
 				Server: ServerConfiguration{
 					Host: "0.0.0.0",
 					Port: "8080",
+					Mode: "debug",
 				},
 				Database: DatabaseConfiguration{
 					DatabaseName: "messagebox",

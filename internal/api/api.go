@@ -10,6 +10,7 @@ import (
 	"github.com/benshields/messagebox/internal/pkg/config"
 	"github.com/benshields/messagebox/internal/pkg/db"
 	"github.com/benshields/messagebox/internal/pkg/logger"
+	"github.com/benshields/messagebox/internal/pkg/router"
 	"github.com/benshields/messagebox/internal/pkg/server"
 )
 
@@ -29,7 +30,9 @@ func Start(configPath string) error {
 		return err
 	}
 
-	srv, err := server.Setup(cfg.Server, log)
+	r := router.Setup()
+
+	srv, err := server.Setup(cfg.Server, log, r)
 	if err != nil {
 		return err
 	}

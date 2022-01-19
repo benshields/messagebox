@@ -28,6 +28,7 @@ type LoggerConfiguration struct {
 type ServerConfiguration struct {
 	Host string
 	Port string
+	Mode string
 }
 
 type DatabaseConfiguration struct {

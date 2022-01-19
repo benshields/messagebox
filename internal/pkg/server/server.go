@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/benshields/messagebox/internal/pkg/config"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/benshields/messagebox/internal/pkg/config"
 )
 
 type serverErrorContextKey struct{}
@@ -32,7 +34,7 @@ type APIServer struct {
 	log        *zap.Logger
 }
 
-func Setup(cfg config.ServerConfiguration, log *zap.Logger) (*APIServer, error) {
+func Setup(cfg config.ServerConfiguration, log *zap.Logger, router *gin.Engine) (*APIServer, error) {
 	sugar := log.Sugar()
 	defer sugar.Sync()
 	sugar.Debugw("db.Setup", "config", cfg)
@@ -43,11 +45,8 @@ func Setup(cfg config.ServerConfiguration, log *zap.Logger) (*APIServer, error) 
 	}
 	srv.httpServer.Addr = fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
 
-	m := http.NewServeMux()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "URL path: %s\n", r.URL.Path)
-	})
-	srv.httpServer.Handler = m
+	gin.SetMode(cfg.Mode)
+	srv.httpServer.Handler = router
 
 	return srv, nil
 }

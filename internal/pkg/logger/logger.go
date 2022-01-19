@@ -1,8 +1,9 @@
 package logger
 
 import (
-	"github.com/benshields/messagebox/internal/pkg/config"
 	"go.uber.org/zap"
+
+	"github.com/benshields/messagebox/internal/pkg/config"
 )
 
 const (

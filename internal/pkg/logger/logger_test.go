@@ -3,9 +3,10 @@ package logger
 import (
 	"testing"
 
-	"github.com/benshields/messagebox/internal/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+
+	"github.com/benshields/messagebox/internal/pkg/config"
 )
 
 func TestSetup(t *testing.T) {

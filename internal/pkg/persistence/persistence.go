@@ -1,7 +1,8 @@
 package persistence
 
 import (
-	"fmt"
+	"github.com/benshields/messagebox/internal/pkg/db"
+	models "github.com/benshields/messagebox/internal/pkg/models/users"
 )
 
 type UserRepository struct{}
@@ -15,33 +16,12 @@ func GetUserRepository() *UserRepository {
 	return userRepository
 }
 
-type User struct {
-	ID   int32  `json:"id"`
-	Name string `json:"username"`
+func (r *UserRepository) Create(user *models.User) (*models.User, error) {
+	result := db.Get().Create(&user)
+	return user, result.Error
 }
 
-// Mocks database persistence
-var users = map[string]*User{}
-
-var userID int32 = 3
-
-func (r *UserRepository) Create(username string) (*User, error) {
-	if _, ok := users[username]; ok {
-		return nil, fmt.Errorf("username %s already exists", username)
-	}
-	user := &User{
-		ID:   userID,
-		Name: username,
-	}
-	userID++
-	users[user.Name] = user
-	return user, nil
-}
-
-func (r *UserRepository) Read(username string) (*User, error) {
-	user, ok := users[username]
-	if !ok {
-		return nil, fmt.Errorf("username %s not found", username)
-	}
-	return user, nil
+func (r *UserRepository) Read(user *models.User) (*models.User, error) {
+	result := db.Get().First(&user)
+	return user, result.Error
 }

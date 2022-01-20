@@ -37,7 +37,7 @@ type APIServer struct {
 func Setup(cfg config.ServerConfiguration, log *zap.Logger, router *gin.Engine) (*APIServer, error) {
 	sugar := log.Sugar()
 	defer sugar.Sync()
-	sugar.Debugw("db.Setup", "config", cfg)
+	sugar.Debugw("server.Setup", "config", cfg)
 
 	srv := &APIServer{
 		httpServer: &http.Server{},

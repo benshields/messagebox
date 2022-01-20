@@ -1,0 +1,8 @@
+BEGIN;
+
+DROP TABLE "users" CASCADE;
+DROP TABLE "groups" CASCADE;
+DROP TABLE "user_groups" CASCADE;
+DROP TABLE "messages" CASCADE;
+
+COMMIT;

@@ -1,8 +1,38 @@
 version: '3.8'
 
 services:
+  messagebox-db:
+    container_name: messagebox-db
+    image: postgres:14.1
+    environment:
+      POSTGRES_DB: messagebox
+      POSTGRES_USER: messagebox_user
+      POSTGRES_PASSWORD: insecure # TODO this should come from secrets
+    healthcheck:
+      test: pg_isready -U postgres -d postgres
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - 5432:5432
+    restart: always
   messagebox:
     build: .
     container_name: messagebox
+    depends_on: # TODO this is fragile design, the app should handle unstable db connection
+      migrate-messagebox-db:
+        condition: service_completed_successfully
     ports:
       - 8080:8080
+    environment:
+      - DATABASE_HOST=messagebox-db
+  migrate-messagebox-db:
+    image: migrate/migrate
+    container_name: migrate-messagebox-db
+    depends_on: # TODO this is fragile design, the migration should handle unstable db connection
+      messagebox-db:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations
+    command:
+      [ "-path", "/migrations", "-database",  "postgres://messagebox_user:insecure@messagebox-db:5432/messagebox?sslmode=disable", "up" ]

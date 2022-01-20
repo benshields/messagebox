@@ -25,7 +25,7 @@ func Start(configPath string) error {
 		return err
 	}
 
-	err = db.Setup(cfg.Database, log)
+	_, err = db.Setup(cfg.Database, log)
 	if err != nil {
 		return err
 	}

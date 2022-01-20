@@ -7,9 +7,29 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/benshields/messagebox/internal/pkg/config"
+	"github.com/benshields/messagebox/internal/pkg/db"
 )
 
 func TestCreateUser(t *testing.T) {
+	dbCfg := config.DatabaseConfiguration{
+		DatabaseName: "messagebox",
+		User:         "messagebox_user",
+		Password:     "insecure",
+		Host:         "0.0.0.0",
+		Port:         "5432",
+	}
+
+	database, err := db.Setup(dbCfg, nil)
+	if err != nil {
+		t.Fatal("db.Setup() failed with:", err)
+	}
+
+	if err = database.Exec(`TRUNCATE users CASCADE;`).Error; err != nil {
+		t.Fatal("database.Exec() failed with:", err)
+	}
+
 	router := Setup()
 
 	w := httptest.NewRecorder()

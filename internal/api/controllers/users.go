@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/benshields/messagebox/internal/pkg/httperr"
-	models "github.com/benshields/messagebox/internal/pkg/models/users"
+	"github.com/benshields/messagebox/internal/pkg/models"
 	"github.com/benshields/messagebox/internal/pkg/persistence"
 )
 
@@ -50,5 +50,6 @@ func GetUser(c *gin.Context) {
 		httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
 		return
 	}
+
 	c.JSON(http.StatusOK, out)
 }

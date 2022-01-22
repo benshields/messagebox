@@ -109,3 +109,26 @@ func CreateReply(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, out)
 }
+
+func GetReplies(c *gin.Context) {
+	var req models.UriId
+	if err := c.BindUri(&req); err != nil {
+		httperr.NewError(c, http.StatusBadRequest, errors.New("invalid request"))
+		return
+	}
+
+	in := models.Message{
+		Model: models.Model{
+			ID: req.ID,
+		},
+	}
+
+	r := persistence.GetMessageRepository()
+	out, err := r.GetReplies(&in)
+	if err != nil { // TODO switch on gorm errors here
+		httperr.NewError(c, http.StatusNotFound, errors.New("message ID does not exist"))
+		return
+	}
+
+	c.JSON(http.StatusOK, out)
+}

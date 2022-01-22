@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/benshields/messagebox/internal/pkg/config"
 	"github.com/benshields/messagebox/internal/pkg/db"
+	"github.com/benshields/messagebox/internal/pkg/models"
 )
 
 func SeedDB(t *testing.T, conn *gorm.DB, seed string) {
@@ -548,6 +550,128 @@ func TestCreateReply(t *testing.T) {
 				assert.NotEmpty(t, actualSentAt)
 				expected.Set("sentAt", actualSentAt)
 				assert.Equal(t, expected, actual)
+			} else {
+				assert.Equal(t, tt.expectedBody, rec.Body.String())
+			}
+
+			rec.Body.Reset()
+		})
+	}
+}
+
+func TestGetReplies(t *testing.T) {
+	dbCfg := config.DatabaseConfiguration{
+		DatabaseName: "messagebox",
+		User:         "messagebox_user",
+		Password:     "insecure",
+		Host:         "0.0.0.0",
+		Port:         "5432",
+	}
+
+	database, err := db.Setup(dbCfg, nil)
+	if err != nil {
+		t.Fatal("db.Setup() failed with:", err)
+	}
+
+	seed := `BEGIN;
+	TRUNCATE messages RESTART IDENTITY CASCADE;
+	TRUNCATE user_groups RESTART IDENTITY CASCADE;
+	TRUNCATE groups RESTART IDENTITY CASCADE;
+	TRUNCATE users RESTART IDENTITY CASCADE;
+	INSERT INTO users (name) VALUES ('super.mario');
+	INSERT INTO users (name) VALUES ('Yoshi');
+	INSERT INTO users (name) VALUES ('luigi');
+	INSERT INTO groups (name) VALUES ('green');
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,2);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,3);
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 2, 'hello', 'user');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, -1, 'hello', 'group');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'use');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'user*');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 3, -1, 're: hello', 'group');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 2, -1, 're: hello', 'group again');
+	COMMIT;`
+	SeedDB(t, database, seed)
+
+	router := Setup()
+
+	cases := []struct {
+		name         string
+		req          string
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:         "Success with original user recipient",
+			req:          "1",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":3,"re":1,"sender":"luigi","recipient":{"username":"super.mario"},"subject":"re: hello","body":"use","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":4,"re":1,"sender":"luigi","recipient":{"username":"super.mario"},"subject":"re: hello","body":"user*","sentAt":"2019-09-03T17:12:42Z"}]`,
+		},
+		{
+			name:         "Success with original group recipient",
+			req:          "2",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":5,"re":2,"sender":"luigi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":6,"re":2,"sender":"Yoshi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group again","sentAt":"2019-09-03T17:12:42Z"}]`,
+		},
+		{
+			name:         "Success with original user recipient but no replies",
+			req:          "3",
+			expectedCode: http.StatusOK,
+			expectedBody: `[]`,
+		},
+		{
+			name:         "Success with original group recipient but no replies",
+			req:          "5",
+			expectedCode: http.StatusOK,
+			expectedBody: `[]`,
+		},
+		{
+			name:         "Fail on no id",
+			req:          "",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+		{
+			name:         "Fail on missing id",
+			req:          "42",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"message ID does not exist"}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/messages/"+tt.req+"/replies", nil)
+			assert.NoError(t, err)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expectedCode, rec.Code)
+
+			if tt.expectedCode == http.StatusOK {
+				// set expectedBody.sentAt to actual value
+				var expected []models.Message
+				err := json.Unmarshal([]byte(tt.expectedBody), &expected)
+				assert.NoError(t, err)
+
+				var actual []models.Message
+				err = json.Unmarshal(rec.Body.Bytes(), &actual)
+				assert.NoError(t, err)
+
+				for _, exp := range expected {
+					found := false
+					for _, act := range actual {
+						if exp.ID == act.ID {
+							found = true
+							exp.SentAt = act.SentAt
+							assert.Equal(t, exp, act)
+						}
+					}
+					assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", exp.ID, expected, actual)
+				}
 			} else {
 				assert.Equal(t, tt.expectedBody, rec.Body.String())
 			}

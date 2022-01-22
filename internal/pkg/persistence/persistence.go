@@ -246,3 +246,28 @@ func (r *MessageRepository) CreateReply(message *models.Message) (*models.Messag
 
 	return message, err
 }
+
+func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Message, error) {
+	var replies []*models.Message
+	err := db.Get().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Take(&message, "id = ?", message.ID).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Find(&replies, "re = ?", message.ID).Error; err != nil {
+			return err
+		}
+
+		for i, in := range replies {
+			out, err := r.Read(in)
+			if err != nil {
+				return err
+			}
+			replies[i] = out
+		}
+
+		return nil
+	})
+
+	return replies, err
+}

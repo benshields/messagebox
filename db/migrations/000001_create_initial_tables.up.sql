@@ -24,10 +24,10 @@ CREATE TABLE "user_groups"
 CREATE TABLE "messages"
 (
     id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    response_to INT,
-    sent_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    re INT,
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sender INT,
-    receiver INT,
+    recipient INT,
     subject VARCHAR (255),
     body VARCHAR (2000)
 );

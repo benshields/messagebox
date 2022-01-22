@@ -30,6 +30,11 @@ func (r *UserRepository) Read(user *models.User) (*models.User, error) {
 	return user, result.Error
 }
 
+func (r *UserRepository) GetByID(user *models.User) (*models.User, error) {
+	result := db.Get().Take(&user, "id = ?", user.ID)
+	return user, result.Error
+}
+
 ////////// TODO split to another file?
 
 type GroupRepository struct{}
@@ -71,6 +76,11 @@ func (r *GroupRepository) Create(group *models.Group) (*models.Group, error) {
 
 func (r *GroupRepository) Read(group *models.Group) (*models.Group, error) {
 	result := db.Get().Take(&group, "name = ?", group.Name)
+	return group, result.Error
+}
+
+func (r *GroupRepository) GetByID(group *models.Group) (*models.Group, error) {
+	result := db.Get().Take(&group, "id = ?", group.ID)
 	return group, result.Error
 }
 
@@ -137,4 +147,57 @@ func (r *MessageRepository) Create(composedMsg *models.ComposedMessage) (*models
 	})
 
 	return msg, err
+}
+
+func (r *MessageRepository) Read(message *models.Message) (*models.Message, error) {
+	err := db.Get().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Take(&message, "id = ?", message.ID).Error; err != nil {
+			return err
+		}
+
+		senderIn := &models.User{
+			Model: models.Model{
+				ID: message.SenderID,
+			},
+		}
+		senderOut, err := GetUserRepository().GetByID(senderIn)
+		if err != nil {
+			return err
+		}
+		message.Sender = senderOut.Name
+
+		if message.RecipientID > 0 {
+			userRecipientIn := &models.User{
+				Model: models.Model{
+					ID: message.RecipientID,
+				},
+			}
+			userRecipientOut, err := GetUserRepository().GetByID(userRecipientIn)
+			if err != nil {
+				return err
+			}
+			message.Recipient = models.Recipient{
+				Username: userRecipientOut.Name,
+			}
+		} else if message.RecipientID < 0 {
+			groupRecipientIn := &models.Group{
+				Model: models.Model{
+					ID: message.RecipientID,
+				},
+			}
+			groupRecipientOut, err := GetGroupRepository().GetByID(groupRecipientIn)
+			if err != nil {
+				return err
+			}
+			message.Recipient = models.Recipient{
+				Groupname: groupRecipientOut.Name,
+			}
+		} else {
+			return gorm.ErrRecordNotFound
+		}
+
+		return nil
+	})
+
+	return message, err
 }

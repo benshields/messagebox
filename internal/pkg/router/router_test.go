@@ -211,8 +211,8 @@ func TestCreateMessage(t *testing.T) {
 	INSERT INTO users (name) VALUES ('Yoshi');
 	INSERT INTO users (name) VALUES ('luigi');
 	INSERT INTO groups (name) VALUES ('green');
-	INSERT INTO user_groups (group_id,user_id) VALUES (-1,2);
-	INSERT INTO user_groups (group_id,user_id) VALUES (-1,3);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,2);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,3);
 	COMMIT;`
 	SeedDB(t, database, seed)
 
@@ -313,6 +313,97 @@ func TestCreateMessage(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, rec.Code)
 
 			if tt.expectedCode == http.StatusCreated {
+				// set expectedBody.sentAt to actual value
+				expected, err := simplejson.NewJson([]byte(tt.expectedBody))
+				assert.NoError(t, err)
+				actual, err := simplejson.NewFromReader(rec.Body)
+				assert.NoError(t, err)
+				actualSentAt := actual.Get("sentAt").MustString()
+				assert.NotEmpty(t, actualSentAt)
+				expected.Set("sentAt", actualSentAt)
+				assert.Equal(t, expected, actual)
+			} else {
+				assert.Equal(t, tt.expectedBody, rec.Body.String())
+			}
+
+			rec.Body.Reset()
+		})
+	}
+}
+
+func TestGetMessage(t *testing.T) {
+	dbCfg := config.DatabaseConfiguration{
+		DatabaseName: "messagebox",
+		User:         "messagebox_user",
+		Password:     "insecure",
+		Host:         "0.0.0.0",
+		Port:         "5432",
+	}
+
+	database, err := db.Setup(dbCfg, nil)
+	if err != nil {
+		t.Fatal("db.Setup() failed with:", err)
+	}
+
+	seed := `BEGIN;
+	TRUNCATE messages RESTART IDENTITY CASCADE;
+	TRUNCATE user_groups RESTART IDENTITY CASCADE;
+	TRUNCATE groups RESTART IDENTITY CASCADE;
+	TRUNCATE users RESTART IDENTITY CASCADE;
+	INSERT INTO users (name) VALUES ('super.mario');
+	INSERT INTO users (name) VALUES ('Yoshi');
+	INSERT INTO users (name) VALUES ('luigi');
+	INSERT INTO groups (name) VALUES ('green');
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,2);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,3);
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 2, 'hello', 'user');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, -1, 'hello', 'group');
+	COMMIT;`
+	SeedDB(t, database, seed)
+
+	router := Setup()
+
+	cases := []struct {
+		name         string
+		req          string
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:         "Success with user recipient",
+			req:          "1",
+			expectedCode: http.StatusOK,
+			expectedBody: `{"id":1,"sender":"super.mario","recipient":{"username":"Yoshi"},"subject":"hello","body":"user","sentAt":"2019-09-03T17:12:42Z"}`,
+		},
+		{
+			name:         "Success with group recipient",
+			req:          "2",
+			expectedCode: http.StatusOK,
+			expectedBody: `{"id":2,"sender":"super.mario","recipient":{"groupname":"green"},"subject":"hello","body":"group","sentAt":"2019-09-03T17:12:42Z"}`,
+		},
+		{
+			name:         "Fail on missing id",
+			req:          "",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"no route found"}`,
+		},
+		{
+			name:         "Fail on bad request",
+			req:          "abc",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/messages/"+tt.req, nil)
+			assert.NoError(t, err)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expectedCode, rec.Code)
+
+			if tt.expectedCode == http.StatusOK {
 				// set expectedBody.sentAt to actual value
 				expected, err := simplejson.NewJson([]byte(tt.expectedBody))
 				assert.NoError(t, err)

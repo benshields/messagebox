@@ -21,6 +21,7 @@ func Setup() *gin.Engine {
 	r.GET("/groups/:groupname", controllers.GetGroup)
 
 	r.POST("/messages", controllers.CreateMessage)
+	r.GET("/messages/:id", controllers.GetMessage)
 
 	return r
 }

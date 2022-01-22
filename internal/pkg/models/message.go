@@ -25,3 +25,10 @@ type Message struct {
 	Body        string    `json:"body,omitempty"`
 	SentAt      time.Time `gorm:"<-:create" json:"sentAt" binding:"required"`
 }
+
+type ReplyMessage struct {
+	Re      int32
+	Sender  string `json:"sender" binding:"required"`
+	Subject string `json:"subject" binding:"required"`
+	Body    string `json:"body,omitempty"`
+}

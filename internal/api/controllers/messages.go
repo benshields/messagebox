@@ -64,9 +64,48 @@ func GetMessage(c *gin.Context) {
 	r := persistence.GetMessageRepository()
 	out, err := r.Read(&in)
 	if err != nil { // TODO switch on gorm errors here
-		httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
+		httperr.NewError(c, http.StatusNotFound, errors.New("message ID does not exist"))
 		return
 	}
 
 	c.JSON(http.StatusOK, out)
+}
+
+func CreateReply(c *gin.Context) {
+	var reqID models.UriId
+	if err := c.BindUri(&reqID); err != nil {
+		httperr.NewError(c, http.StatusBadRequest, errors.New("invalid request"))
+		return
+	}
+
+	var reqReply models.ReplyMessage
+	if err := c.BindJSON(&reqReply); err != nil {
+		httperr.NewError(c, http.StatusBadRequest, errors.New("invalid request"))
+		return
+	}
+
+	in := models.Message{
+		Re:      reqID.ID,
+		Sender:  reqReply.Sender,
+		Subject: reqReply.Subject,
+		Body:    reqReply.Body,
+	}
+
+	r := persistence.GetMessageRepository()
+	out, err := r.CreateReply(&in)
+	if err != nil {
+		switch { // TODO improve error handling accross the entire API
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			httperr.NewError(c, http.StatusNotFound, errors.New("sender or message ID does not exist")) // TODO improve specificity
+			return
+		case errors.Is(err, gorm.ErrInvalidValue), errors.Is(err, gorm.ErrInvalidValueOfLength):
+			httperr.NewError(c, http.StatusBadRequest, errors.New("invalid request"))
+			return
+		default:
+			httperr.NewError(c, http.StatusInternalServerError, errors.New("internal server error"))
+			return
+		}
+	}
+
+	c.JSON(http.StatusCreated, out)
 }

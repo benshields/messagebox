@@ -201,3 +201,48 @@ func (r *MessageRepository) Read(message *models.Message) (*models.Message, erro
 
 	return message, err
 }
+
+func (r *MessageRepository) CreateReply(message *models.Message) (*models.Message, error) {
+	err := db.Get().Transaction(func(tx *gorm.DB) error {
+		originalMessageIn := &models.Message{
+			Model: models.Model{
+				ID: message.Re,
+			},
+		}
+		originalMessageOut, err := r.Read(originalMessageIn)
+		if err != nil {
+			return err
+		}
+
+		senderIn := &models.User{
+			Name: message.Sender,
+		}
+		senderOut, err := GetUserRepository().Read(senderIn)
+		if err != nil {
+			return err
+		}
+		message.SenderID = senderOut.ID
+
+		if originalMessageOut.RecipientID > 0 { // TODO everywhere I check the sign of the ID I should be using a util func to test if this is user or group ID
+			message.Recipient = models.Recipient{
+				Username: originalMessageOut.Sender,
+			}
+			message.RecipientID = originalMessageOut.SenderID
+		} else {
+			message.Recipient = models.Recipient{
+				Groupname: originalMessageOut.Recipient.Groupname,
+			}
+			message.RecipientID = originalMessageOut.RecipientID
+		}
+
+		message.SentAt = time.Now().UTC()
+
+		if err := tx.Create(&message).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return message, err
+}

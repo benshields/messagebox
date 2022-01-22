@@ -22,6 +22,7 @@ func Setup() *gin.Engine {
 
 	r.POST("/messages", controllers.CreateMessage)
 	r.GET("/messages/:id", controllers.GetMessage)
+	r.POST("/messages/:id/replies", controllers.CreateReply)
 
 	return r
 }

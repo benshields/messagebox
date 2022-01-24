@@ -94,6 +94,140 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
+func TestGetMailbox(t *testing.T) {
+	dbCfg := config.DatabaseConfiguration{
+		DatabaseName: "messagebox",
+		User:         "messagebox_user",
+		Password:     "insecure",
+		Host:         "0.0.0.0",
+		Port:         "5432",
+	}
+
+	database, err := db.Setup(dbCfg, nil)
+	if err != nil {
+		t.Fatal("db.Setup() failed with:", err)
+	}
+
+	seed := `BEGIN;
+	TRUNCATE messages RESTART IDENTITY CASCADE;
+	TRUNCATE user_groups RESTART IDENTITY CASCADE;
+	TRUNCATE groups RESTART IDENTITY CASCADE;
+	TRUNCATE users RESTART IDENTITY CASCADE;
+	INSERT INTO users (name) VALUES ('super.mario');
+	INSERT INTO users (name) VALUES ('Yoshi');
+	INSERT INTO users (name) VALUES ('luigi');
+	INSERT INTO users (name) VALUES ('toad');
+	INSERT INTO users (name) VALUES ('shy.guy');
+	INSERT INTO groups (name) VALUES ('green');
+	INSERT INTO groups (name) VALUES ('GOATs');
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,2);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-1,3);
+	INSERT INTO user_groups (group_id, user_id) VALUES (-2,2);
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 2, 'hello', 'user');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, -1, 'hello', 'group');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'use');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'user*');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 3, -1, 're: hello', 'group');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 2, -1, 're: hello', 'group again');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 5, 'hi', 'shy guy');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 5, 2, 'hi yoshi', 'from shy guy');
+	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 4, -2, 'hi GOATs', 'from toad');
+	COMMIT;`
+	SeedDB(t, database, seed)
+
+	router := Setup()
+
+	cases := []struct {
+		name         string
+		req          string
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:         "Success with no messages",
+			req:          "toad",
+			expectedCode: http.StatusOK,
+			expectedBody: `[]`,
+		},
+		{
+			name:         "Success with 1 direct message",
+			req:          "shy.guy",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":7,"sender":"super.mario","recipient":{"username":"shy.guy"},"subject":"hi","body":"shy guy","sentAt":"2019-09-03T17:12:42Z"}]`,
+		},
+		{
+			name:         "Success with 2 direct messages",
+			req:          "super.mario",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":3,"re":1,"sender":"luigi","recipient":{"username":"super.mario"},"subject":"re: hello","body":"use","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":4,"re":1,"sender":"luigi","recipient":{"username":"super.mario"},"subject":"re: hello","body":"user*","sentAt":"2019-09-03T17:12:42Z"}]`,
+		},
+		{
+			name:         "Success with 2 direct messages & 4 groups messages from 2 groups",
+			req:          "Yoshi",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":1,"sender":"super.mario","recipient":{"username":"Yoshi"},"subject":"hello","body":"user","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":2,"sender":"super.mario","recipient":{"groupname":"green"},"subject":"hello","body":"group","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":5,"re":2,"sender":"luigi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":6,"re":2,"sender":"Yoshi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group again","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":8,"sender":"shy.guy","recipient":{"username":"Yoshi"},"subject":"hi yoshi","body":"from shy guy","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":9,"sender":"toad","recipient":{"groupname":"GOATs"},"subject":"hi GOATs","body":"from toad","sentAt":"2019-09-03T17:12:42Z"}]`,
+		},
+		{
+			name:         "Fail on no username",
+			req:          "",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+		{
+			name:         "Fail on missing username",
+			req:          "bowser",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"user with given username does not exist"}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/users/"+tt.req+"/mailbox", nil)
+			assert.NoError(t, err)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expectedCode, rec.Code)
+
+			if tt.expectedCode == http.StatusOK {
+				// set expectedBody.sentAt to actual value
+				var expected []models.Message
+				err := json.Unmarshal([]byte(tt.expectedBody), &expected)
+				assert.NoError(t, err)
+
+				var actual []models.Message
+				err = json.Unmarshal(rec.Body.Bytes(), &actual)
+				assert.NoError(t, err)
+
+				for _, exp := range expected {
+					found := false
+					for _, act := range actual {
+						if exp.ID == act.ID {
+							found = true
+							exp.SentAt = act.SentAt
+							assert.Equal(t, exp, act)
+						}
+					}
+					assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", exp.ID, expected, actual)
+				}
+			} else {
+				assert.Equal(t, tt.expectedBody, rec.Body.String())
+			}
+
+			rec.Body.Reset()
+		})
+	}
+}
+
 func TestCreateGroup(t *testing.T) {
 	dbCfg := config.DatabaseConfiguration{
 		DatabaseName: "messagebox",

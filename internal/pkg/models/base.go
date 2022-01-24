@@ -7,3 +7,7 @@ type Model struct {
 type UriId struct {
 	ID int32 `uri:"id" binding:"required,numeric"`
 }
+
+type UriUsername struct {
+	Username string `uri:"username" binding:"required"`
+}

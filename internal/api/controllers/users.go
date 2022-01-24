@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/benshields/messagebox/internal/pkg/httperr"
 	"github.com/benshields/messagebox/internal/pkg/models"
@@ -49,6 +50,33 @@ func GetUser(c *gin.Context) {
 	if err != nil { // TODO switch on gorm errors here
 		httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
 		return
+	}
+
+	c.JSON(http.StatusOK, out)
+}
+
+func GetMailbox(c *gin.Context) {
+	var req models.UriUsername
+	if err := c.BindUri(&req); err != nil {
+		httperr.NewError(c, http.StatusBadRequest, errors.New("invalid request"))
+		return
+	}
+
+	in := models.User{
+		Name: req.Username,
+	}
+
+	r := persistence.GetUserRepository()
+	out, err := r.GetMailbox(&in)
+	if err != nil {
+		switch { // TODO improve error handling accross the entire API
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
+			return
+		default:
+			httperr.NewError(c, http.StatusInternalServerError, errors.New("internal server error"))
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, out)

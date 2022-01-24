@@ -16,6 +16,7 @@ func Setup() *gin.Engine {
 
 	r.POST("/users", controllers.CreateUser)
 	r.GET("/users/:username", controllers.GetUser)
+	r.GET("users/:username/mailbox", controllers.GetMailbox)
 
 	r.POST("/groups", controllers.CreateGroup)
 	r.GET("/groups/:groupname", controllers.GetGroup)

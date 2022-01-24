@@ -35,6 +35,36 @@ func (r *UserRepository) GetByID(user *models.User) (*models.User, error) {
 	return user, result.Error
 }
 
+func (r *UserRepository) GetMailbox(user *models.User) ([]*models.Message, error) { // TODO this must order by created at
+	var err error
+	messages := make([]*models.Message, 0)
+	err = db.Get().Transaction(func(tx *gorm.DB) error {
+		user, err = r.Read(user)
+		if err != nil {
+			return err
+		}
+
+		userGroups, err := GetGroupRepository().FindByUserID(user)
+		if err != nil {
+			return err
+		}
+
+		ids := make([]int32, len(userGroups)+1)
+		for i, userGroup := range userGroups {
+			ids[i] = userGroup.GroupID
+		}
+		ids[len(userGroups)] = user.ID
+
+		messages, err = GetMessageRepository().FindByRecipientID(ids)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+	return messages, err
+}
+
 ////////// TODO split to another file?
 
 type GroupRepository struct{}
@@ -84,6 +114,12 @@ func (r *GroupRepository) GetByID(group *models.Group) (*models.Group, error) {
 	return group, result.Error
 }
 
+func (r *GroupRepository) FindByUserID(user *models.User) ([]*models.UserGroup, error) {
+	var userGroups []*models.UserGroup
+	result := db.Get().Find(&userGroups, "user_id = ?", user.ID)
+	return userGroups, result.Error
+}
+
 ////////// TODO split to another file?
 
 type MessageRepository struct{}
@@ -112,7 +148,7 @@ func (r *MessageRepository) Create(composedMsg *models.ComposedMessage) (*models
 		senderIn := &models.User{
 			Name: composedMsg.Sender,
 		}
-		senderOut, err := GetUserRepository().Read(senderIn)
+		senderOut, err := GetUserRepository().Read(senderIn) // TODO link the transactions together
 		if err != nil {
 			return err
 		}
@@ -247,7 +283,7 @@ func (r *MessageRepository) CreateReply(message *models.Message) (*models.Messag
 	return message, err
 }
 
-func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Message, error) {
+func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Message, error) { // TODO this must order by created at
 	var replies []*models.Message
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
 		if err := tx.Take(&message, "id = ?", message.ID).Error; err != nil {
@@ -270,4 +306,25 @@ func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Messa
 	})
 
 	return replies, err
+}
+
+func (r *MessageRepository) FindByRecipientID(ids []int32) ([]*models.Message, error) {
+	var messages []*models.Message
+	err := db.Get().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Find(&messages, "recipient IN ?", ids).Error; err != nil {
+			return err
+		}
+
+		for i, in := range messages {
+			out, err := r.Read(in)
+			if err != nil {
+				return err
+			}
+			messages[i] = out
+		}
+
+		return nil
+	})
+
+	return messages, err
 }

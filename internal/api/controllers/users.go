@@ -13,7 +13,7 @@ import (
 )
 
 type UserRegistration struct {
-	Username string `json:"username" binding:"required"`
+	Username string `json:"username" binding:"required,min=1,max=32"`
 }
 
 func CreateUser(c *gin.Context) {
@@ -29,7 +29,7 @@ func CreateUser(c *gin.Context) {
 
 	r := persistence.GetUserRepository()
 	out, err := r.Create(&in)
-	if err != nil { // TODO switch on gorm errors here
+	if err != nil {
 		httperr.NewError(c, http.StatusConflict, errors.New("user with the same username already registered"))
 		return
 	}
@@ -47,7 +47,7 @@ func GetUser(c *gin.Context) {
 
 	r := persistence.GetUserRepository()
 	out, err := r.Read(&in)
-	if err != nil { // TODO switch on gorm errors here
+	if err != nil {
 		httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
 		return
 	}
@@ -69,7 +69,7 @@ func GetMailbox(c *gin.Context) {
 	r := persistence.GetUserRepository()
 	out, err := r.GetMailbox(&in)
 	if err != nil {
-		switch { // TODO improve error handling accross the entire API
+		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
 			return

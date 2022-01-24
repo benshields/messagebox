@@ -32,7 +32,7 @@ func CreateMessage(c *gin.Context) {
 	r := persistence.GetMessageRepository()
 	out, err := r.Create(&req)
 	if err != nil {
-		switch { // TODO improve error handling accross the entire API
+		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			httperr.NewError(c, http.StatusNotFound, errors.New("sender or recipient does not exist")) // TODO improve specificity
 			return
@@ -63,7 +63,7 @@ func GetMessage(c *gin.Context) {
 
 	r := persistence.GetMessageRepository()
 	out, err := r.Read(&in)
-	if err != nil { // TODO switch on gorm errors here
+	if err != nil {
 		httperr.NewError(c, http.StatusNotFound, errors.New("message ID does not exist"))
 		return
 	}
@@ -94,7 +94,7 @@ func CreateReply(c *gin.Context) {
 	r := persistence.GetMessageRepository()
 	out, err := r.CreateReply(&in)
 	if err != nil {
-		switch { // TODO improve error handling accross the entire API
+		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			httperr.NewError(c, http.StatusNotFound, errors.New("sender or message ID does not exist")) // TODO improve specificity
 			return
@@ -125,7 +125,7 @@ func GetReplies(c *gin.Context) {
 
 	r := persistence.GetMessageRepository()
 	out, err := r.GetReplies(&in)
-	if err != nil { // TODO switch on gorm errors here
+	if err != nil {
 		httperr.NewError(c, http.StatusNotFound, errors.New("message ID does not exist"))
 		return
 	}

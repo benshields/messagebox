@@ -15,7 +15,7 @@ import (
 )
 
 type GroupCreation struct {
-	Groupname string   `json:"groupname" binding:"required"`
+	Groupname string   `json:"groupname" binding:"required,min=1,max=32"`
 	Usernames []string `json:"usernames" binding:"required"`
 }
 
@@ -75,7 +75,7 @@ func GetGroup(c *gin.Context) {
 
 	r := persistence.GetUserRepository()
 	out, err := r.Read(&in)
-	if err != nil { // TODO switch on gorm errors here
+	if err != nil {
 		httperr.NewError(c, http.StatusNotFound, errors.New("user with given username does not exist"))
 		return
 	}

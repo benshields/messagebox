@@ -3,10 +3,10 @@ package models
 import "time"
 
 type ComposedMessage struct {
-	Sender    string `json:"sender" binding:"required"` // TODO check length & other validation https://github.com/go-playground/validator#baked-in-validations
+	Sender    string `json:"sender" binding:"required"`
 	Recipient `json:"recipient" binding:"required"`
-	Subject   string `json:"subject" binding:"required"`
-	Body      string `json:"body"`
+	Subject   string `json:"subject" binding:"required,min=1,max=255"`
+	Body      string `json:"body" binding:"max=2000"`
 }
 
 type Recipient struct {
@@ -29,6 +29,6 @@ type Message struct {
 type ReplyMessage struct {
 	Re      int32
 	Sender  string `json:"sender" binding:"required"`
-	Subject string `json:"subject" binding:"required"`
-	Body    string `json:"body,omitempty"`
+	Subject string `json:"subject" binding:"required,min=1,max=255"`
+	Body    string `json:"body,omitempty" binding:"max=2000"`
 }

@@ -9,6 +9,10 @@ import (
 	"github.com/benshields/messagebox/internal/pkg/models"
 )
 
+func IsUserID(id int32) bool {
+	return id > 0
+}
+
 type UserRepository struct{}
 
 var userRepository *UserRepository
@@ -35,7 +39,7 @@ func (r *UserRepository) GetByID(user *models.User) (*models.User, error) {
 	return user, result.Error
 }
 
-func (r *UserRepository) GetMailbox(user *models.User) ([]*models.Message, error) { // TODO this must order by created at
+func (r *UserRepository) GetMailbox(user *models.User) ([]*models.Message, error) {
 	var err error
 	messages := make([]*models.Message, 0)
 	err = db.Get().Transaction(func(tx *gorm.DB) error {
@@ -202,7 +206,7 @@ func (r *MessageRepository) Read(message *models.Message) (*models.Message, erro
 		}
 		message.Sender = senderOut.Name
 
-		if message.RecipientID > 0 {
+		if IsUserID(message.RecipientID) {
 			userRecipientIn := &models.User{
 				Model: models.Model{
 					ID: message.RecipientID,
@@ -215,7 +219,7 @@ func (r *MessageRepository) Read(message *models.Message) (*models.Message, erro
 			message.Recipient = models.Recipient{
 				Username: userRecipientOut.Name,
 			}
-		} else if message.RecipientID < 0 {
+		} else {
 			groupRecipientIn := &models.Group{
 				Model: models.Model{
 					ID: message.RecipientID,
@@ -228,8 +232,6 @@ func (r *MessageRepository) Read(message *models.Message) (*models.Message, erro
 			message.Recipient = models.Recipient{
 				Groupname: groupRecipientOut.Name,
 			}
-		} else {
-			return gorm.ErrRecordNotFound
 		}
 
 		return nil
@@ -259,7 +261,7 @@ func (r *MessageRepository) CreateReply(message *models.Message) (*models.Messag
 		}
 		message.SenderID = senderOut.ID
 
-		if originalMessageOut.RecipientID > 0 { // TODO everywhere I check the sign of the ID I should be using a util func to test if this is user or group ID
+		if IsUserID(originalMessageOut.RecipientID) {
 			message.Recipient = models.Recipient{
 				Username: originalMessageOut.Sender,
 			}
@@ -283,7 +285,7 @@ func (r *MessageRepository) CreateReply(message *models.Message) (*models.Messag
 	return message, err
 }
 
-func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Message, error) { // TODO this must order by created at
+func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Message, error) {
 	var replies []*models.Message
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
 		if err := tx.Take(&message, "id = ?", message.ID).Error; err != nil {

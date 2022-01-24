@@ -10,7 +10,7 @@ import (
 
 const driver = "postgres"
 
-var globalDB *gorm.DB // TODO use DI instead of global
+var globalDB *gorm.DB // FIXME use DI instead of global
 
 func Setup(cfg config.DatabaseConfiguration, log *zap.Logger) (*gorm.DB, error) {
 	if log != nil {
@@ -25,7 +25,7 @@ func Setup(cfg config.DatabaseConfiguration, log *zap.Logger) (*gorm.DB, error) 
 		return nil, err
 	}
 
-	// db.LogMode(false) // TODO figure out how to set these
+	// db.LogMode(false) // FIXME figure out how to set these
 	// db.DB().SetMaxIdleConns(cfg.MaxIdleConns)
 	// db.DB().SetMaxOpenConns(cfg.MaxOpenConns)
 

@@ -135,25 +135,26 @@ func TestGetMailbox(t *testing.T) {
 	INSERT INTO user_groups (group_id, user_id) VALUES (-1,2);
 	INSERT INTO user_groups (group_id, user_id) VALUES (-1,3);
 	INSERT INTO user_groups (group_id, user_id) VALUES (-2,2);
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 2, 'hello', 'user');
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, -1, 'hello', 'group');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (0, 1, 2, 'hello', 'user', '1994-12-31T00:00:04Z');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (0, 1, -1, 'hello', 'group', '1994-12-31T00:00:06Z');
 	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'use');
 	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (1, 3, 1, 're: hello', 'user*');
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 3, -1, 're: hello', 'group');
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (2, 2, -1, 're: hello', 'group again');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (2, 3, -1, 're: hello', 'group', '1994-12-31T00:00:01Z');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (2, 2, -1, 're: hello', 'group again', '1994-12-31T00:00:03Z');
 	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 1, 5, 'hi', 'shy guy');
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 5, 2, 'hi yoshi', 'from shy guy');
-	INSERT INTO messages (re, sender, recipient, subject, body) VALUES (0, 4, -2, 'hi GOATs', 'from toad');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (0, 5, 2, 'hi yoshi', 'from shy guy', '1994-12-31T00:00:05Z');
+	INSERT INTO messages (re, sender, recipient, subject, body, sent_at) VALUES (0, 4, -2, 'hi GOATs', 'from toad', '1994-12-31T00:00:02Z');
 	COMMIT;`
 	SeedDB(t, database, seed)
 
 	router := Setup()
 
 	cases := []struct {
-		name         string
-		req          string
-		expectedCode int
-		expectedBody string
+		name           string
+		req            string
+		expectedCode   int
+		expectedBody   string
+		expectOrdering bool
 	}{
 		{
 			name:         "Success with no messages",
@@ -181,12 +182,13 @@ func TestGetMailbox(t *testing.T) {
 			req:          "Yoshi",
 			expectedCode: http.StatusOK,
 			expectedBody: `[
-				{"id":1,"sender":"super.mario","recipient":{"username":"Yoshi"},"subject":"hello","body":"user","sentAt":"2019-09-03T17:12:42Z"},
-				{"id":2,"sender":"super.mario","recipient":{"groupname":"green"},"subject":"hello","body":"group","sentAt":"2019-09-03T17:12:42Z"},
-				{"id":5,"re":2,"sender":"luigi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group","sentAt":"2019-09-03T17:12:42Z"},
-				{"id":6,"re":2,"sender":"Yoshi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group again","sentAt":"2019-09-03T17:12:42Z"},
-				{"id":8,"sender":"shy.guy","recipient":{"username":"Yoshi"},"subject":"hi yoshi","body":"from shy guy","sentAt":"2019-09-03T17:12:42Z"},
-				{"id":9,"sender":"toad","recipient":{"groupname":"GOATs"},"subject":"hi GOATs","body":"from toad","sentAt":"2019-09-03T17:12:42Z"}]`,
+				{"id":5,"re":2,"sender":"luigi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group","sentAt":"1994-12-31T00:00:01Z"},
+				{"id":9,"sender":"toad","recipient":{"groupname":"GOATs"},"subject":"hi GOATs","body":"from toad","sentAt":"1994-12-31T00:00:02Z"},
+				{"id":6,"re":2,"sender":"Yoshi","recipient":{"groupname":"green"},"subject":"re: hello","body":"group again","sentAt":"1994-12-31T00:00:03Z"},
+				{"id":1,"sender":"super.mario","recipient":{"username":"Yoshi"},"subject":"hello","body":"user","sentAt":"1994-12-31T00:00:04Z"},
+				{"id":8,"sender":"shy.guy","recipient":{"username":"Yoshi"},"subject":"hi yoshi","body":"from shy guy","sentAt":"1994-12-31T00:00:05Z"},
+				{"id":2,"sender":"super.mario","recipient":{"groupname":"green"},"subject":"hello","body":"group","sentAt":"1994-12-31T00:00:06Z"}]`,
+			expectOrdering: true,
 		},
 		{
 			name:         "Fail on no username",
@@ -220,16 +222,24 @@ func TestGetMailbox(t *testing.T) {
 				err = json.Unmarshal(rec.Body.Bytes(), &actual)
 				assert.NoError(t, err)
 
-				for _, exp := range expected {
-					found := false
-					for _, act := range actual {
-						if exp.ID == act.ID {
-							found = true
-							exp.SentAt = act.SentAt
-							assert.Equal(t, exp, act)
-						}
+				if tt.expectOrdering {
+					for i, exp := range expected {
+						act := actual[i]
+						exp.SentAt = act.SentAt
+						assert.Equal(t, exp, act)
 					}
-					assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", exp.ID, expected, actual)
+				} else {
+					for _, exp := range expected {
+						found := false
+						for _, act := range actual {
+							if exp.ID == act.ID {
+								found = true
+								exp.SentAt = act.SentAt
+								assert.Equal(t, exp, act)
+							}
+						}
+						assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", exp.ID, expected, actual)
+					}
 				}
 			} else {
 				assert.Equal(t, tt.expectedBody, rec.Body.String())

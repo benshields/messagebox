@@ -311,7 +311,7 @@ func (r *MessageRepository) GetReplies(message *models.Message) ([]*models.Messa
 func (r *MessageRepository) FindByRecipientID(ids []int32) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
-		if err := tx.Find(&messages, "recipient IN ?", ids).Error; err != nil {
+		if err := tx.Order("sent_at").Find(&messages, "recipient IN ?", ids).Error; err != nil {
 			return err
 		}
 

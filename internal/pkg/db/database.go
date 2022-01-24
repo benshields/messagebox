@@ -25,9 +25,13 @@ func Setup(cfg config.DatabaseConfiguration, log *zap.Logger) (*gorm.DB, error) 
 		return nil, err
 	}
 
-	// db.LogMode(false) // FIXME figure out how to set these
-	// db.DB().SetMaxIdleConns(cfg.MaxIdleConns)
-	// db.DB().SetMaxOpenConns(cfg.MaxOpenConns)
+	gdb, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	gdb.SetMaxIdleConns(cfg.MaxIdleConns)
+	gdb.SetMaxOpenConns(cfg.MaxOpenConns)
 
 	globalDB = db
 

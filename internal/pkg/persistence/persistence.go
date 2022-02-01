@@ -97,8 +97,21 @@ func (r *GroupRepository) Create(group *models.Group) (*models.Group, error) {
 			return gorm.ErrRecordNotFound
 		}
 
-		// create group and user_group entries but leave existing users table alone
-		if err := tx.Omit("Users.*").Create(&group).Error; err != nil {
+		// create group
+		if err := tx.Debug().Table("groups").Model(&group).Select("Name").Create(&group).Error; err != nil {
+			return err
+		}
+
+		// create the user_groups entries
+		userGroups := make([]models.UserGroup, len(unames))
+		for i := range userGroups {
+			ug := models.UserGroup{
+				GroupID: group.ID,
+				UserID:  group.Users[i].ID,
+			}
+			userGroups[i] = ug
+		}
+		if err := tx.Debug().Model(&models.UserGroup{}).Table("user_groups").Create(&userGroups).Error; err != nil {
 			return err
 		}
 

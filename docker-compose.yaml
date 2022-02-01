@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: messagebox_user
       POSTGRES_PASSWORD: insecure # TODO this should come from secrets
     healthcheck:
-      test: pg_isready -U postgres -d postgres
+      test: pg_isready -U messagebox_user -d messagebox
       interval: 10s
       timeout: 3s
       retries: 5

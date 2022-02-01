@@ -16,7 +16,7 @@ func Setup(cfg config.DatabaseConfiguration, log *zap.Logger) (*gorm.DB, error) 
 	if log != nil {
 		sugar := log.Sugar()
 		defer sugar.Sync()
-		sugar.Debugw("db.Setup", "config", cfg)
+		sugar.Debugw("db.Setup", "config", cfg) // TODO this logs the password which is a vulnerability
 	}
 
 	dsn := "host=" + cfg.Host + " port=" + cfg.Port + " user=" + cfg.User + " dbname=" + cfg.DatabaseName + "  sslmode=disable password=" + cfg.Password

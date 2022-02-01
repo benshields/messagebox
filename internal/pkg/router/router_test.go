@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bitly/go-simplejson"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
@@ -28,6 +27,41 @@ func SeedDB(t *testing.T, conn *gorm.DB, seed string) {
 		}
 	}
 	t.Log("seeding complete, continuing test")
+}
+
+func AssertMessageEqual(t *testing.T, expected, actual []byte) {
+	var exp models.Message
+	err := json.Unmarshal(expected, &exp)
+	assert.NoError(t, err)
+
+	var act models.Message
+	err = json.Unmarshal(actual, &act)
+	assert.NoError(t, err)
+
+	exp.SentAt = act.SentAt
+	assert.Equal(t, exp, act)
+}
+
+func AssertMessageSliceEqual(t *testing.T, expected, actual []byte) {
+	var exp []models.Message
+	err := json.Unmarshal(expected, &exp)
+	assert.NoError(t, err)
+
+	var act []models.Message
+	err = json.Unmarshal(actual, &act)
+	assert.NoError(t, err)
+
+	for _, e := range exp {
+		found := false
+		for _, a := range act {
+			if e.ID == a.ID {
+				found = true
+				e.SentAt = a.SentAt
+				assert.Equal(t, e, a)
+			}
+		}
+		assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", e.ID, exp, act)
+	}
 }
 
 func TestCreateUser(t *testing.T) {
@@ -265,9 +299,9 @@ func TestCreateGroup(t *testing.T) {
 	}
 
 	seed := `BEGIN;
-	TRUNCATE user_groups CASCADE;
-	TRUNCATE groups CASCADE;
-	TRUNCATE users CASCADE;
+	TRUNCATE user_groups RESTART IDENTITY CASCADE;
+	TRUNCATE groups RESTART IDENTITY CASCADE;
+	TRUNCATE users RESTART IDENTITY CASCADE;
 	INSERT INTO users (name) VALUES ('super.mario');
 	INSERT INTO users (name) VALUES ('Yoshi');
 	INSERT INTO users (name) VALUES ('luigi');
@@ -519,15 +553,7 @@ func TestCreateMessage(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, rec.Code)
 
 			if tt.expectedCode == http.StatusCreated {
-				// set expectedBody.sentAt to actual value
-				expected, err := simplejson.NewJson([]byte(tt.expectedBody))
-				assert.NoError(t, err)
-				actual, err := simplejson.NewFromReader(rec.Body)
-				assert.NoError(t, err)
-				actualSentAt := actual.Get("sentAt").MustString()
-				assert.NotEmpty(t, actualSentAt)
-				expected.Set("sentAt", actualSentAt)
-				assert.Equal(t, expected, actual)
+				AssertMessageEqual(t, []byte(tt.expectedBody), rec.Body.Bytes())
 			} else {
 				assert.Equal(t, tt.expectedBody, rec.Body.String())
 			}
@@ -616,15 +642,7 @@ func TestGetMessage(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, rec.Code)
 
 			if tt.expectedCode == http.StatusOK {
-				// set expectedBody.sentAt to actual value
-				expected, err := simplejson.NewJson([]byte(tt.expectedBody))
-				assert.NoError(t, err)
-				actual, err := simplejson.NewFromReader(rec.Body)
-				assert.NoError(t, err)
-				actualSentAt := actual.Get("sentAt").MustString()
-				assert.NotEmpty(t, actualSentAt)
-				expected.Set("sentAt", actualSentAt)
-				assert.Equal(t, expected, actual)
+				AssertMessageEqual(t, []byte(tt.expectedBody), rec.Body.Bytes())
 			} else {
 				assert.Equal(t, tt.expectedBody, rec.Body.String())
 			}
@@ -777,15 +795,7 @@ func TestCreateReply(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, rec.Code)
 
 			if tt.expectedCode == http.StatusCreated {
-				// set expectedBody.sentAt to actual value
-				expected, err := simplejson.NewJson([]byte(tt.expectedBody))
-				assert.NoError(t, err)
-				actual, err := simplejson.NewFromReader(rec.Body)
-				assert.NoError(t, err)
-				actualSentAt := actual.Get("sentAt").MustString()
-				assert.NotEmpty(t, actualSentAt)
-				expected.Set("sentAt", actualSentAt)
-				assert.Equal(t, expected, actual)
+				AssertMessageEqual(t, []byte(tt.expectedBody), rec.Body.Bytes())
 			} else {
 				assert.Equal(t, tt.expectedBody, rec.Body.String())
 			}
@@ -909,6 +919,297 @@ func TestGetReplies(t *testing.T) {
 					assert.Truef(t, found, "expected message with ID %d not found\nexpected: %v\nactual  : %v", exp.ID, expected, actual)
 				}
 			} else {
+				assert.Equal(t, tt.expectedBody, rec.Body.String())
+			}
+
+			rec.Body.Reset()
+		})
+	}
+}
+
+func TestIntegration(t *testing.T) {
+	dbCfg := config.DatabaseConfiguration{
+		DatabaseName: "messagebox",
+		User:         "messagebox_user",
+		Password:     "insecure",
+		Host:         "0.0.0.0",
+		Port:         "5432",
+	}
+
+	database, err := db.Setup(dbCfg, nil)
+	if err != nil {
+		t.Fatal("db.Setup() failed with:", err)
+	}
+
+	seed := `BEGIN;
+	TRUNCATE messages RESTART IDENTITY CASCADE;
+	TRUNCATE user_groups RESTART IDENTITY CASCADE;
+	TRUNCATE groups RESTART IDENTITY CASCADE;
+	TRUNCATE users RESTART IDENTITY CASCADE;
+	COMMIT;`
+	SeedDB(t, database, seed)
+
+	router := Setup()
+
+	cases := []struct {
+		name         string
+		verb         string
+		path         string
+		reqURI       string
+		req          string
+		expectedCode int
+		expectedBody string
+		expectedType interface{}
+	}{
+		{
+			name:         "Register a new user - success",
+			verb:         http.MethodPost,
+			path:         "/users",
+			req:          `{"username":"super.mario"}`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"username":"super.mario"}`,
+		},
+		{
+			name:         "Register a new user - success Copy",
+			verb:         http.MethodPost,
+			path:         "/users",
+			req:          `{"username":"indy.cat"}`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"username":"indy.cat"}`,
+		},
+		{
+			name:         "Register a new user - fail 409 duplicate",
+			verb:         http.MethodPost,
+			path:         "/users",
+			req:          `{"username":"super.mario"}`,
+			expectedCode: http.StatusConflict,
+			expectedBody: `{"code":409,"message":"user with the same username already registered"}`,
+		},
+		{
+			name:         "Register a new user - fail 400 bad request",
+			verb:         http.MethodPost,
+			path:         "/users",
+			req:          `{"oh_no":"bad request!"}`,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+		{
+			name: "Register group - success",
+			verb: http.MethodPost,
+			path: "/groups",
+			req: `{"groupname":"quantummetric",
+					"usernames": [
+				  		"super.mario"
+					]}`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"groupname":"quantummetric","usernames":["super.mario"]}`,
+		},
+		{
+			name: "Register group - fail 409 duplicate",
+			verb: http.MethodPost,
+			path: "/groups",
+			req: `{"groupname":"quantummetric",
+					"usernames": [
+				  		"super.mario"
+					]}`,
+			expectedCode: http.StatusConflict,
+			expectedBody: `{"code":409,"message":"group with the same groupname already registered"}`,
+		},
+		{
+			name: "Register group - fail 400 bad request",
+			verb: http.MethodPost,
+			path: "/groups",
+			req: `{"oh_no":"no group name!",
+					"usernames": [
+				  		"super.mario"
+					]}`,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+		{
+			name: "Create message - success group",
+			verb: http.MethodPost,
+			path: "/messages",
+			req: `{
+				"sender": "super.mario",
+				"recipient": {
+				  "groupname": "quantummetric"
+				},
+				"subject": "Lunch",
+				"body": "Wanna grab some lunch at Fuzzy's?"
+			  }`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"id":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Lunch","body":"Wanna grab some lunch at Fuzzy's?","sentAt":"2019-09-03T17:12:42Z"}`,
+			expectedType: models.Message{},
+		},
+		{
+			name: "Create message - success user",
+			verb: http.MethodPost,
+			path: "/messages",
+			req: `{
+				"sender": "super.mario",
+				"recipient": {
+					"username": "indy.cat"
+				},
+				"subject": "Hey!",
+				"body": "Whats up?"
+			  }`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"id":2,"sender":"super.mario","recipient":{"username":"indy.cat"},"subject":"Hey!","body":"Whats up?","sentAt":"2019-09-03T17:12:42Z"}`,
+			expectedType: models.Message{},
+		},
+		{
+			name: "Create message - fail 400 bad request",
+			verb: http.MethodPost,
+			path: "/messages",
+			req: `{
+				"oh_no": "no sender!",
+				"recipient": {
+					"groupname": "quantummetric"
+				  },
+				  "subject": "Lunch",
+				  "body": "Wanna grab some lunch at Fuzzy's?"
+			  }`,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: `{"code":400,"message":"invalid request"}`,
+		},
+		{
+			name:         "Get mailbox messages - success for user indy.cat",
+			verb:         http.MethodGet,
+			path:         "/users/<uri>/mailbox",
+			reqURI:       "indy.cat",
+			expectedCode: http.StatusOK,
+			expectedBody: `[{"id":2,"sender":"super.mario","recipient":{"username":"indy.cat"},"subject":"Hey!","body":"Whats up?","sentAt":"2019-09-03T17:12:42Z"}]`,
+			expectedType: []models.Message{},
+		},
+		{
+			name:         "Get mailbox messages - success for user super.mario",
+			verb:         http.MethodGet,
+			path:         "/users/<uri>/mailbox",
+			reqURI:       "super.mario",
+			expectedCode: http.StatusOK,
+			expectedBody: `[{"id":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Lunch","body":"Wanna grab some lunch at Fuzzy's?","sentAt":"2019-09-03T17:12:42Z"}]`,
+			expectedType: []models.Message{},
+		},
+		{
+			name:         "Get mailbox messages - fail 404",
+			verb:         http.MethodGet,
+			path:         "/users/<uri>/mailbox",
+			reqURI:       "superman",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"user with given username does not exist"}`,
+		},
+		{
+			name:         "Get message - success",
+			verb:         http.MethodGet,
+			path:         "/messages/<uri>",
+			reqURI:       "1",
+			expectedCode: http.StatusOK,
+			expectedBody: `{"id":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Lunch","body":"Wanna grab some lunch at Fuzzy's?","sentAt":"2019-09-03T17:12:42Z"}`,
+			expectedType: models.Message{},
+		},
+		{
+			name:         "Get message - fail 404",
+			verb:         http.MethodGet,
+			path:         "/messages/<uri>",
+			reqURI:       "12345789",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"message ID does not exist"}`,
+		},
+		{
+			name:   "Create reply - success with group",
+			verb:   http.MethodPost,
+			path:   "/messages/<uri>/replies",
+			reqURI: "1",
+			req: `{
+				"sender": "super.mario",
+				"subject": "Im replying!!!",
+				"body": "Wow, this is a reply!"
+			  }`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"id":3,"re":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Im replying!!!","body":"Wow, this is a reply!","sentAt":"2019-09-03T17:12:42Z"}`,
+			expectedType: models.Message{},
+		},
+		{
+			name:   "Create reply - success with user",
+			verb:   http.MethodPost,
+			path:   "/messages/<uri>/replies",
+			reqURI: "2",
+			req: `{
+				"sender": "super.mario",
+				"subject": "Guess what??",
+				"body": "Another reply??? WOW!!!"
+			  }`,
+			expectedCode: http.StatusCreated,
+			expectedBody: `{"id":4,"re":2,"sender":"super.mario","recipient":{"username":"super.mario"},"subject":"Guess what??","body":"Another reply??? WOW!!!","sentAt":"2019-09-03T17:12:42Z"}`,
+			expectedType: models.Message{},
+		},
+		{
+			name:         "Get replies - success",
+			verb:         http.MethodGet,
+			path:         "/messages/<uri>/replies",
+			reqURI:       "1",
+			expectedCode: http.StatusOK,
+			expectedBody: `[{"id":3,"re":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Im replying!!!","body":"Wow, this is a reply!","sentAt":"2019-09-03T17:12:42Z"}]`,
+			expectedType: []models.Message{},
+		},
+		{
+			name:         "Get replies - fail 404",
+			verb:         http.MethodGet,
+			path:         "/messages/<uri>/replies",
+			reqURI:       "1234567",
+			expectedCode: http.StatusNotFound,
+			expectedBody: `{"code":404,"message":"message ID does not exist"}`,
+		},
+		{
+			name:         "Get mailbox messages with replies - success for user indy.cat",
+			verb:         http.MethodGet,
+			path:         "/users/<uri>/mailbox",
+			reqURI:       "indy.cat",
+			expectedCode: http.StatusOK,
+			expectedBody: `[{"id":2,"sender":"super.mario","recipient":{"username":"indy.cat"},"subject":"Hey!","body":"Whats up?","sentAt":"2019-09-03T17:12:42Z"}]`,
+			expectedType: []models.Message{},
+		},
+		{
+			name:         "Get mailbox messages with replies - success for user super.mario",
+			verb:         http.MethodGet,
+			path:         "/users/<uri>/mailbox",
+			reqURI:       "super.mario",
+			expectedCode: http.StatusOK,
+			expectedBody: `[
+				{"id":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Lunch","body":"Wanna grab some lunch at Fuzzy's?","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":3,"re":1,"sender":"super.mario","recipient":{"groupname":"quantummetric"},"subject":"Im replying!!!","body":"Wow, this is a reply!","sentAt":"2019-09-03T17:12:42Z"},
+				{"id":4,"re":2,"sender":"super.mario","recipient":{"username":"super.mario"},"subject":"Guess what??","body":"Another reply??? WOW!!!","sentAt":"2019-09-03T17:12:42Z"}]`,
+			expectedType: []models.Message{},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			path := strings.Replace(tt.path, `<uri>`, tt.reqURI, 1)
+			var req *http.Request
+			var err error
+			if tt.req != "" {
+				req, err = http.NewRequest(tt.verb, path, bytes.NewBufferString(tt.req))
+			} else {
+				req, err = http.NewRequest(tt.verb, path, nil)
+			}
+			assert.NoError(t, err)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expectedCode, rec.Code)
+
+			switch tt.expectedCode {
+			case http.StatusOK, http.StatusCreated:
+				switch tt.expectedType.(type) {
+				case models.Message:
+					AssertMessageEqual(t, []byte(tt.expectedBody), rec.Body.Bytes())
+				case []models.Message:
+					AssertMessageSliceEqual(t, []byte(tt.expectedBody), rec.Body.Bytes())
+				default:
+					assert.Equal(t, tt.expectedBody, rec.Body.String())
+				}
+			default:
 				assert.Equal(t, tt.expectedBody, rec.Body.String())
 			}
 
